@@ -1,0 +1,49 @@
+# Pipeline de ejemplo: ejecuta la misma suite en Android e iOS en paralelo
+# y publica el reporte de Serenity como artefacto.
+#
+# Variables secretas requeridas en la libreria de variables del proyecto:
+#   LT_USERNAME, LT_ACCESS_KEY
+trigger:
+  branches:
+    include:
+      - main
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+strategy:
+  matrix:
+    Android:
+      platformProfile: 'serenity.properties'
+      platformRunner: '*AndroidRunner'
+    iOS:
+      platformProfile: 'serenity-ios.properties'
+      platformRunner: '*IosRunner'
+
+steps:
+  - task: JavaToolInstaller@0
+    inputs:
+      versionSpec: '11'
+      jdkArchitectureOption: 'x64'
+      jdkSourceOption: 'PreInstalled'
+
+  - script: |
+      ./gradlew clean test aggregate \
+        -Dproperties=$(platformProfile) \
+        -Dappium.hub="https://$(LT_USERNAME):$(LT_ACCESS_KEY)@mobile-hub.lambdatest.com/wd/hub" \
+        --tests "$(platformRunner)"
+    displayName: 'Ejecutar suite movil'
+    continueOnError: true
+
+  - task: PublishTestResults@2
+    inputs:
+      testResultsFormat: 'JUnit'
+      testResultsFiles: '**/target/site/serenity/SERENITY-JUNIT-*.xml'
+      testRunTitle: 'Pruebas moviles'
+    condition: succeededOrFailed()
+
+  - task: PublishBuildArtifacts@1
+    inputs:
+      pathToPublish: 'target/site/serenity'
+      artifactName: 'serenity-report'
+    condition: succeededOrFailed()
